@@ -1,27 +1,19 @@
-from flask import Flask
+from flask import Flask, render_template
 
 app = Flask(__name__)
 
-# Ruta principal
 @app.route('/')
-def inicio():
-    return "Bienvenido a PUYO DELIVERY - Pedidos rápidos en la ciudad de Puyo"
+def index():
+    return render_template('index.html') # Renderiza el archivo, no texto plano
 
-# Ruta dinámica para clientes/pedidos
-@app.route('/pedido/<cliente>')
-def pedido(cliente):
-    return f"Cliente: {cliente}. Tu pedido está en proceso de confirmación y asignación de repartidor."
+@app.route('/about')
+def about():
+    return render_template('about.html')
 
-# Ruta dinámica para categoría/tipo de servicio
-@app.route('/categoria/<nombre>')
-def categoria(nombre):
-    return f"Categoría solicitada: {nombre}. Disponibilidad sujeta al horario del local y repartidores."
+@app.route('/productos')
+def productos():
+    return render_template('productos.html')
 
-# Ruta dinámica para ver estado por ID
-@app.route('/estado/<int:id_pedido>')
-def estado(id_pedido):
-    return f"Pedido #{id_pedido}: En preparación. Te notificaremos cuando salga a reparto."
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(debug=True)
-
+    
