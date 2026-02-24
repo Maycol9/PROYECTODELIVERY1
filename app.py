@@ -4,42 +4,31 @@ from flask import Flask, request, render_template_string
 
 app = Flask(__name__)
 
-# --- 1. CLASE PRODUCTO (Requisito: POO y Encapsulamiento) ---
+# --- 1. CLASE PRODUCTO (POO + Encapsulamiento) ---
 class Producto:
     def __init__(self, id_prod, nombre, cantidad, precio, restaurante):
-        self.__id = id_prod  # Atributo privado
-        self.__nombre = nombre # Atributo privado
+        self.__id = id_prod  
+        self.__nombre = nombre 
         self.cantidad = cantidad
         self.precio = precio
         self.restaurante = restaurante
 
-    # Getters para acceder a datos protegidos
     def get_id(self): return self.__id
     def get_nombre(self): return self.__nombre
 
-# --- 2. CLASE INVENTARIO (Requisito: Colecciones y SQLite) ---
+# --- 2. CLASE INVENTARIO (Diccionarios + SQLite) ---
 class Inventario:
     def __init__(self):
         self.db_path = "puyo_delivery.db"
-        self.productos_coleccion = {} # Diccionario para búsqueda eficiente O(1)
+        self.productos_coleccion = {} # Diccionario O(1)
         self._conectar_db()
         self._sincronizar()
 
     def _conectar_db(self):
-        """Crea la tabla en SQLite si no existe."""
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS productos (
-                    id INTEGER PRIMARY KEY,
-                    nombre TEXT NOT NULL,
-                    cantidad INTEGER,
-                    precio REAL,
-                    restaurante TEXT
-                )
-            """)
+            conn.execute("CREATE TABLE IF NOT EXISTS productos (id INTEGER PRIMARY KEY, nombre TEXT, cantidad INTEGER, precio REAL, restaurante TEXT)")
 
     def _sincronizar(self):
-        """Carga datos de SQLite al Diccionario en memoria."""
         self.productos_coleccion.clear()
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
@@ -50,78 +39,44 @@ class Inventario:
 
     def añadir(self, p):
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("INSERT INTO productos VALUES (?,?,?,?,?)",
-                         (p.get_id(), p.get_nombre(), p.cantidad, p.precio, p.restaurante))
+            conn.execute("INSERT INTO productos VALUES (?,?,?,?,?)", (p.get_id(), p.get_nombre(), p.cantidad, p.precio, p.restaurante))
         self.productos_coleccion[p.get_id()] = p
 
-    def eliminar(self, id_prod):
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("DELETE FROM productos WHERE id = ?", (id_prod,))
-        if id_prod in self.productos_coleccion:
-            del self.productos_coleccion[id_prod]
-
-# --- 3. RUTAS FLASK (Interfaz para Render) ---
-
+# --- 3. RUTA PRINCIPAL (Interfaz Web) ---
 @app.route('/')
 def home():
     inv = Inventario()
+    # Diseño minimalista y funcional
     html = """
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 40px; background: #e9ecef; }
-        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-width: 900px; margin: auto; }
-        h1 { color: #d9534f; border-bottom: 2px solid #d9534f; padding-bottom: 10px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }
-        th, td { padding: 12px; border: 1px solid #dee2e6; text-align: left; }
-        th { background-color: #f8f9fa; }
-        .btn-del { color: #d9534f; text-decoration: none; font-weight: bold; }
-        input { padding: 10px; border: 1px solid #ccc; border-radius: 4px; margin-right: 5px; }
-        button { padding: 10px 20px; background: #5cb85c; color: white; border: none; border-radius: 4px; cursor: pointer; }
-    </style>
-    <div class="card">
-        <h1>🛵 Puyo Delivery - Inventario Local</h1>
-        <h3>Registrar nuevo producto</h3>
-        <form action="/add" method="post">
-            <input name="id" placeholder="ID" type="number" required style="width: 60px;">
-            <input name="nombre" placeholder="Nombre del plato" required>
-            <input name="cant" placeholder="Stock" type="number" required style="width: 80px;">
-            <input name="precio" placeholder="Precio" type="number" step="0.01" required style="width: 80px;">
-            <input name="rest" placeholder="Restaurante" required>
-            <button type="submit">Agregar</button>
-        </form>
-        <table>
-            <tr><th>ID</th><th>Nombre</th><th>Stock</th><th>Precio</th><th>Local</th><th>Acción</th></tr>
+    <body style="font-family: sans-serif; padding: 50px; background: #f4f4f9;">
+        <div style="background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 600px; margin: auto;">
+            <h1 style="color: #e44d26;">🛵 Puyo Delivery - Inventario</h1>
+            <form action="/add" method="post">
+                <input name="id" placeholder="ID" type="number" required style="width: 50px; padding: 5px;">
+                <input name="nombre" placeholder="Nombre" required style="padding: 5px;">
+                <input name="cant" placeholder="Stock" type="number" required style="width: 60px; padding: 5px;">
+                <input name="precio" placeholder="Precio" type="number" step="0.01" required style="width: 70px; padding: 5px;">
+                <button type="submit" style="background: #28a745; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Añadir</button>
+            </form>
+            <table border="1" style="width: 100%; margin-top: 20px; border-collapse: collapse;">
+                <tr style="background: #e44d26; color: white;"><th>ID</th><th>Nombre</th><th>Stock</th><th>Precio</th></tr>
     """
     for p in inv.productos_coleccion.values():
-        html += f"""
-            <tr>
-                <td>{p.get_id()}</td>
-                <td>{p.get_nombre()}</td>
-                <td>{p.cantidad}</td>
-                <td>${p.precio:.2f}</td>
-                <td>{p.restaurante}</td>
-                <td><a href="/del/{p.get_id()}" class="btn-del">❌ Eliminar</a></td>
-            </tr>
-        """
-    html += "</table></div>"
+        html += f"<tr><td>{p.get_id()}</td><td>{p.get_nombre()}</td><td>{p.cantidad}</td><td>${p.precio:.2f}</td></tr>"
+    html += "</table></div></body>"
     return render_template_string(html)
 
 @app.route('/add', methods=['POST'])
 def add():
     inv = Inventario()
     try:
-        p = Producto(int(request.form['id']), request.form['nombre'],
-                     int(request.form['cant']), float(request.form['precio']), request.form['rest'])
+        p = Producto(int(request.form['id']), request.form['nombre'], int(request.form['cant']), float(request.form['precio']), "Local Puyo")
         inv.añadir(p)
     except: pass
     return "<script>window.location='/';</script>"
 
-@app.route('/del/<int:id_p>')
-def delete(id_p):
-    inv = Inventario()
-    inv.eliminar(id_p)
-    return "<script>window.location='/';</script>"
-
+# --- 4. CONFIGURACIÓN CRUCIAL PARA RENDER ---
 if __name__ == '__main__':
-    # ESTO ES LO QUE HACE QUE FUNCIONE EN RENDER
+    # Render usa la variable de entorno PORT, si no existe usa 5000
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
