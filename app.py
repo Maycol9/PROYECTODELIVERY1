@@ -1,80 +1,95 @@
-import sqlite3
 import os
-from flask import Flask, request, render_template_string
+import json
+import csv
+from flask import Flask, request, render_template_string, redirect, url_for
+from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
 
-# --- 1. CLASE PRODUCTO (Requisito: POO y Encapsulamiento) ---
-class Producto:
-    def __init__(self, id_prod, nombre, cantidad, precio, restaurante):
-        # Atributos privados (__) para cumplir con el encapsulamiento
-        self.__id = id_prod  
-        self.__nombre = nombre 
-        self.cantidad = cantidad
-        self.precio = precio
-        self.restaurante = restaurante
+# --- CONFIGURACIÓN DE PERSISTENCIA (Semana 12) ---
+basedir = os.path.abspath(os.path.dirname(__file__))
+# Configuración de SQLite usando SQLAlchemy (ORM)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'puyo_delivery.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-    # Getters para acceder a datos privados de forma segura
+db = SQLAlchemy(app)
+
+# Carpeta para archivos planos según estructura solicitada
+DATA_DIR = os.path.join(basedir, 'inventario', 'data')
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+
+# --- 1. CLASE PRODUCTO (Requisito: POO, Encapsulamiento y ORM) ---
+class Producto(db.Model):
+    __tablename__ = 'productos'
+    # Atributos que mapean a la base de datos
+    id = db.Column(db.Integer, primary_key=True)
+    _nombre = db.Column('nombre', db.String(100), nullable=False) # Encapsulamiento en BD
+    cantidad = db.Column(db.Integer, nullable=False)
+    precio = db.Column(db.Float, nullable=False)
+    restaurante = db.Column(db.String(100), nullable=False)
+
+    # Getters para cumplir con el requisito de encapsulamiento del profesor
     def get_id(self): 
-        return self.__id
+        return self.id
         
     def get_nombre(self): 
-        return self.__nombre
+        return self._nombre
 
-# --- 2. CLASE INVENTARIO (Requisito: Colecciones y SQLite) ---
-class Inventario:
-    def __init__(self):
-        self.db_path = "puyo_delivery.db"
-        self.productos_coleccion = {} # Diccionario para búsqueda eficiente O(1)
-        self._conectar_db()
-        self._sincronizar()
+# Crear la base de datos automáticamente
+with app.app_context():
+    db.create_all()
 
-    def _conectar_db(self):
-        """Crea la tabla en SQLite si no existe."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS productos (
-                    id INTEGER PRIMARY KEY,
-                    nombre TEXT NOT NULL,
-                    cantidad INTEGER,
-                    precio REAL,
-                    restaurante TEXT
-                )
-            """)
+# --- 2. LÓGICA DE PERSISTENCIA EN ARCHIVOS (Punto 2.2 de la tarea) ---
+def guardar_en_archivos(p_dict):
+    # A. Guardar en TXT (usando open() en modo append)
+    with open(os.path.join(DATA_DIR, 'datos.txt'), 'a') as f:
+        f.write(f"ID: {p_dict['id']} | Producto: {p_dict['nombre']} | Restaurante: {p_dict['restaurante']}\n")
 
-    def _sincronizar(self):
-        """Carga datos de SQLite al Diccionario en memoria."""
-        self.productos_coleccion.clear()
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM productos")
-            for f in cursor.fetchall():
-                # Creamos el objeto Producto usando los datos de la DB
-                p = Producto(f[0], f[1], f[2], f[3], f[4])
-                # Guardamos en el diccionario usando el ID como llave
-                self.productos_coleccion[p.get_id()] = p
+    # B. Guardar en JSON (librería json)
+    json_path = os.path.join(DATA_DIR, 'datos.json')
+    datos_json = []
+    if os.path.exists(json_path):
+        with open(json_path, 'r') as f:
+            try: datos_json = json.load(f)
+            except: datos_json = []
+    datos_json.append(p_dict)
+    with open(json_path, 'w') as f:
+        json.dump(datos_json, f, indent=4)
 
-    def añadir(self, p):
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("INSERT INTO productos VALUES (?,?,?,?,?)", 
-                         (p.get_id(), p.get_nombre(), p.cantidad, p.precio, p.restaurante))
-        self.productos_coleccion[p.get_id()] = p
+    # C. Guardar en CSV (librería csv)
+    csv_path = os.path.join(DATA_DIR, 'datos.csv')
+    es_nuevo = not os.path.exists(csv_path)
+    with open(csv_path, 'a', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=p_dict.keys())
+        if es_nuevo: writer.writeheader()
+        writer.writerow(p_dict)
 
-    def eliminar(self, id_prod):
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("DELETE FROM productos WHERE id = ?", (id_prod,))
-        if id_prod in self.productos_coleccion:
-            del self.productos_coleccion[id_prod]
+def leer_archivos_planos():
+    """Lee los archivos para mostrarlos en la nueva ruta de datos."""
+    resultado = {"txt": "", "json": [], "csv": []}
+    if os.path.exists(os.path.join(DATA_DIR, 'datos.txt')):
+        with open(os.path.join(DATA_DIR, 'datos.txt'), 'r') as f: resultado["txt"] = f.read()
+    if os.path.exists(os.path.join(DATA_DIR, 'datos.json')):
+        with open(os.path.join(DATA_DIR, 'datos.json'), 'r') as f: 
+            try: resultado["json"] = json.load(f)
+            except: pass
+    if os.path.exists(os.path.join(DATA_DIR, 'datos.csv')):
+        with open(os.path.join(DATA_DIR, 'datos.csv'), 'r') as f:
+            resultado["csv"] = list(csv.DictReader(f))
+    return resultado
 
-# --- 3. RUTAS FLASK (Interfaz Web para el profesor) ---
+# --- 3. RUTAS FLASK ---
 
 @app.route('/')
 def home():
-    inv = Inventario()
+    # Consulta usando SQLAlchemy (ORM)
+    productos = Producto.query.all()
+    
     html = """
     <style>
         body { font-family: 'Segoe UI', sans-serif; margin: 40px; background: #f8f9fa; color: #333; }
-        .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); max-width: 900px; margin: auto; }
+        .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); max-width: 950px; margin: auto; }
         h1 { color: #e44d26; text-align: center; }
         .form-group { background: #fff5f2; padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #ffe0d6; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
@@ -83,27 +98,31 @@ def home():
         .btn-del { color: #dc3545; text-decoration: none; font-weight: bold; }
         input { padding: 10px; margin: 5px; border: 1px solid #ddd; border-radius: 5px; }
         button { padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        button:hover { background: #218838; }
+        .nav-btn { background: #007bff; display: inline-block; padding: 10px; color: white; text-decoration: none; border-radius: 5px; margin-bottom: 10px; }
     </style>
     <div class="card">
-        <h1>🛵 Puyo Delivery - Gestión de Inventario</h1>
-        <p style="text-align:center;">Persistencia: <b>SQLite</b> | Colección: <b>Diccionario</b></p>
+        <h1>🛵 Puyo Delivery - Sistema Integrado</h1>
+        <p style="text-align:center;">Persistencia: <b>SQLAlchemy (ORM) + Archivos (JSON, CSV, TXT)</b></p>
         
+        <div style="text-align: center;">
+            <a href="/datos" class="nav-btn">🔍 Ver Persistencia en Archivos</a>
+        </div>
+
         <div class="form-group">
             <form action="/add" method="post">
-                <input name="id" placeholder="ID (Num)" type="number" required style="width: 80px;">
-                <input name="nombre" placeholder="Nombre Producto" required>
-                <input name="cant" placeholder="Stock" type="number" required style="width: 80px;">
+                <input name="id" placeholder="ID" type="number" required style="width: 60px;">
+                <input name="nombre" placeholder="Producto" required>
+                <input name="cant" placeholder="Stock" type="number" required style="width: 70px;">
                 <input name="precio" placeholder="Precio" type="number" step="0.01" required style="width: 80px;">
                 <input name="rest" placeholder="Restaurante" required>
-                <button type="submit">Añadir Producto</button>
+                <button type="submit">Guardar en Todo el Sistema</button>
             </form>
         </div>
 
         <table>
             <tr><th>ID</th><th>Nombre</th><th>Stock</th><th>Precio</th><th>Restaurante</th><th>Acción</th></tr>
     """
-    for p in inv.productos_coleccion.values():
+    for p in productos:
         html += f"""
             <tr>
                 <td>{p.get_id()}</td>
@@ -111,7 +130,7 @@ def home():
                 <td>{p.cantidad} unidades</td>
                 <td>${p.precio:.2f}</td>
                 <td>{p.restaurante}</td>
-                <td><a href="/del/{p.get_id()}" class="btn-del" onclick="return confirm('¿Eliminar?')">Eliminar</a></td>
+                <td><a href="/del/{p.id}" class="btn-del" onclick="return confirm('¿Eliminar?')">Eliminar</a></td>
             </tr>
         """
     html += "</table></div>"
@@ -119,28 +138,64 @@ def home():
 
 @app.route('/add', methods=['POST'])
 def add():
-    inv = Inventario()
     try:
-        nuevo_p = Producto(
-            int(request.form['id']), 
-            request.form['nombre'], 
-            int(request.form['cant']), 
-            float(request.form['precio']), 
-            request.form['rest']
-        )
-        inv.añadir(nuevo_p)
-    except: pass
-    return "<script>window.location='/';</script>"
+        # 1. Datos del formulario
+        p_id = int(request.form['id'])
+        nombre = request.form['nombre']
+        cantidad = int(request.form['cant'])
+        precio = float(request.form['precio'])
+        restaurante = request.form['rest']
+
+        # 2. Persistencia en DB con SQLAlchemy (Punto 2.3)
+        nuevo_p = Producto(id=p_id, _nombre=nombre, cantidad=cantidad, precio=precio, restaurante=restaurante)
+        db.session.add(nuevo_p)
+        db.session.commit()
+
+        # 3. Persistencia en archivos (Punto 2.2)
+        dict_datos = {"id": p_id, "nombre": nombre, "cantidad": cantidad, "precio": precio, "restaurante": restaurante}
+        guardar_en_archivos(dict_datos)
+        
+    except Exception as e:
+        print(f"Error: {e}")
+        db.session.rollback()
+        
+    return redirect(url_for('home'))
 
 @app.route('/del/<int:id_p>')
 def delete(id_p):
-    inv = Inventario()
-    inv.eliminar(id_p)
-    return "<script>window.location='/';</script>"
+    prod = Producto.query.get(id_p)
+    if prod:
+        db.session.delete(prod)
+        db.session.commit()
+    return redirect(url_for('home'))
 
-# --- 4. CONFIGURACIÓN DE PUERTO PARA RENDER ---
+# RUTA NUEVA PARA SEMANA 12: Muestra la persistencia en archivos
+@app.route('/datos')
+def datos():
+    data = leer_archivos_planos()
+    html = f"""
+    <body style="font-family: sans-serif; margin: 40px; background: #f0f2f5;">
+        <a href="/" style="text-decoration: none; color: #007bff; font-weight: bold;">← Volver al Sistema</a>
+        <h1>Lectura de Persistencia Local (Semana 12)</h1>
+        
+        <div style="background: white; padding: 20px; margin-bottom: 20px; border-radius: 10px; border-left: 5px solid #ffc107;">
+            <h3>📄 Archivo TXT (Lectura plana)</h3>
+            <pre>{data['txt']}</pre>
+        </div>
+
+        <div style="background: white; padding: 20px; margin-bottom: 20px; border-radius: 10px; border-left: 5px solid #28a745;">
+            <h3>📦 Archivo JSON (Diccionario serializado)</h3>
+            <pre>{json.dumps(data['json'], indent=2)}</pre>
+        </div>
+
+        <div style="background: white; padding: 20px; margin-bottom: 20px; border-radius: 10px; border-left: 5px solid #17a2b8;">
+            <h3>📊 Archivo CSV (Registros estructurados)</h3>
+            <pre>{data['csv']}</pre>
+        </div>
+    </body>
+    """
+    return render_template_string(html)
+
 if __name__ == '__main__':
-    # Usamos el puerto 10000 que configuramos en el panel de Render
-    import os
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
