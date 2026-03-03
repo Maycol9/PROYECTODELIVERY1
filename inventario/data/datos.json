@@ -1,0 +1,16 @@
+[
+    {
+        "id": 1,
+        "nombre": "HAMBURGUESA ",
+        "cantidad": 2,
+        "precio": 5.0,
+        "restaurante": "DON MATIAS "
+    },
+    {
+        "id": 2,
+        "nombre": "PIZZA",
+        "cantidad": 2,
+        "precio": 10.0,
+        "restaurante": "DON MATIAS "
+    }
+]

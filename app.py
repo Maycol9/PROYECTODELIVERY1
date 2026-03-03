@@ -6,131 +6,122 @@ from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
 
-# --- CONFIGURACIÓN DE PERSISTENCIA (Semana 12) ---
-basedir = os.path.abspath(os.path.dirname(__file__))
-# Configuración de SQLite usando SQLAlchemy (ORM)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'puyo_delivery.db')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# --- 1. CONFIGURACIÓN DE INFRAESTRUCTURA (Punto 2.1 y 2.3) ---
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
+# Configuración profesional de SQLAlchemy (ORM)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(BASE_DIR, 'puyo_delivery.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# Carpeta para archivos planos según estructura solicitada
-DATA_DIR = os.path.join(basedir, 'inventario', 'data')
+# Creación de ruta de almacenamiento local: inventario/data/
+DATA_DIR = os.path.join(BASE_DIR, 'inventario', 'data')
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
-# --- 1. CLASE PRODUCTO (Requisito: POO, Encapsulamiento y ORM) ---
+# --- 2. MODELO DE DATOS CON ENCAPSULAMIENTO (Punto 2.4) ---
 class Producto(db.Model):
-    __tablename__ = 'productos'
-    # Atributos que mapean a la base de datos
-    id = db.Column(db.Integer, primary_key=True)
-    _nombre = db.Column('nombre', db.String(100), nullable=False) # Encapsulamiento en BD
+    __tablename__ = 'inventario_puyo'
+    
+    id_prod = db.Column('id', db.Integer, primary_key=True)
+    _nombre = db.Column('nombre', db.String(100), nullable=False) # Atributo privado
     cantidad = db.Column(db.Integer, nullable=False)
     precio = db.Column(db.Float, nullable=False)
     restaurante = db.Column(db.String(100), nullable=False)
 
-    # Getters para cumplir con el requisito de encapsulamiento del profesor
+    # Getters para acceso seguro (Encapsulamiento POO)
     def get_id(self): 
-        return self.id
+        return self.id_prod
         
     def get_nombre(self): 
         return self._nombre
 
-# Crear la base de datos automáticamente
+# Inicialización de la base de datos
 with app.app_context():
     db.create_all()
 
-# --- 2. LÓGICA DE PERSISTENCIA EN ARCHIVOS (Punto 2.2 de la tarea) ---
-def guardar_en_archivos(p_dict):
-    # A. Guardar en TXT (usando open() en modo append)
-    with open(os.path.join(DATA_DIR, 'datos.txt'), 'a') as f:
-        f.write(f"ID: {p_dict['id']} | Producto: {p_dict['nombre']} | Restaurante: {p_dict['restaurante']}\n")
+# --- 3. LÓGICA DE PERSISTENCIA TRIPLE (Punto 2.2) ---
 
-    # B. Guardar en JSON (librería json)
+def guardar_en_archivos(p_dict):
+    """Sincroniza datos en TXT, JSON y CSV simultáneamente."""
+    
+    # A. Respaldo en Texto Plano (TXT)
+    with open(os.path.join(DATA_DIR, 'datos.txt'), 'a') as f:
+        f.write(f"ID: {p_dict['id']} | {p_dict['nombre']} | {p_dict['restaurante']}\n")
+
+    # B. Respaldo Estructurado (JSON)
     json_path = os.path.join(DATA_DIR, 'datos.json')
-    datos_json = []
+    json_list = []
     if os.path.exists(json_path):
         with open(json_path, 'r') as f:
-            try: datos_json = json.load(f)
-            except: datos_json = []
-    datos_json.append(p_dict)
+            try: json_list = json.load(f)
+            except: json_list = []
+    json_list.append(p_dict)
     with open(json_path, 'w') as f:
-        json.dump(datos_json, f, indent=4)
+        json.dump(json_list, f, indent=4)
 
-    # C. Guardar en CSV (librería csv)
+    # C. Respaldo Tabular (CSV)
     csv_path = os.path.join(DATA_DIR, 'datos.csv')
-    es_nuevo = not os.path.exists(csv_path)
+    is_new = not os.path.exists(csv_path)
     with open(csv_path, 'a', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=p_dict.keys())
-        if es_nuevo: writer.writeheader()
+        if is_new: writer.writeheader()
         writer.writerow(p_dict)
 
-def leer_archivos_planos():
-    """Lee los archivos para mostrarlos en la nueva ruta de datos."""
-    resultado = {"txt": "", "json": [], "csv": []}
-    if os.path.exists(os.path.join(DATA_DIR, 'datos.txt')):
-        with open(os.path.join(DATA_DIR, 'datos.txt'), 'r') as f: resultado["txt"] = f.read()
-    if os.path.exists(os.path.join(DATA_DIR, 'datos.json')):
-        with open(os.path.join(DATA_DIR, 'datos.json'), 'r') as f: 
-            try: resultado["json"] = json.load(f)
-            except: pass
-    if os.path.exists(os.path.join(DATA_DIR, 'datos.csv')):
-        with open(os.path.join(DATA_DIR, 'datos.csv'), 'r') as f:
-            resultado["csv"] = list(csv.DictReader(f))
-    return resultado
+# --- 4. INTERFAZ PROFESIONAL (HTML/CSS) ---
 
-# --- 3. RUTAS FLASK ---
+ESTILOS_PRO = """
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+    :root { --puyo-orange: #FF5A00; --puyo-black: #1A1A1A; --puyo-bg: #F8F9FA; }
+    body { font-family: 'Inter', sans-serif; background: var(--puyo-bg); margin: 0; color: var(--puyo-black); }
+    .nav { background: var(--puyo-black); padding: 1.2rem 10%; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+    .logo { color: white; font-size: 1.5rem; font-weight: 800; text-decoration: none; }
+    .logo span { color: var(--puyo-orange); }
+    .card { max-width: 1000px; margin: 3rem auto; background: white; padding: 2.5rem; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.05); }
+    .form-grid { background: #f1f3f5; padding: 25px; border-radius: 15px; margin-bottom: 2.5rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+    input { border: 1px solid #ddd; padding: 12px; border-radius: 8px; outline: none; transition: 0.3s; }
+    input:focus { border-color: var(--puyo-orange); box-shadow: 0 0 0 3px rgba(255,90,0,0.1); }
+    .btn-add { background: var(--puyo-orange); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+    .btn-add:hover { background: #E65100; transform: translateY(-2px); }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th { text-align: left; padding: 15px; color: #888; font-size: 0.75rem; text-transform: uppercase; }
+    td { padding: 18px; border-bottom: 1px solid #eee; }
+    .id-tag { background: #eee; padding: 4px 8px; border-radius: 5px; font-weight: bold; font-size: 0.8rem; }
+    .btn-data { background: #333; color: white; text-decoration: none; padding: 10px 15px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; }
+</style>
+"""
 
 @app.route('/')
 def home():
-    # Consulta usando SQLAlchemy (ORM)
     productos = Producto.query.all()
-    
-    html = """
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; margin: 40px; background: #f8f9fa; color: #333; }
-        .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); max-width: 950px; margin: auto; }
-        h1 { color: #e44d26; text-align: center; }
-        .form-group { background: #fff5f2; padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #ffe0d6; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { padding: 12px; border: 1px solid #eee; text-align: left; }
-        th { background: #e44d26; color: white; }
-        .btn-del { color: #dc3545; text-decoration: none; font-weight: bold; }
-        input { padding: 10px; margin: 5px; border: 1px solid #ddd; border-radius: 5px; }
-        button { padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        .nav-btn { background: #007bff; display: inline-block; padding: 10px; color: white; text-decoration: none; border-radius: 5px; margin-bottom: 10px; }
-    </style>
+    html = ESTILOS_PRO + """
+    <nav class="nav">
+        <a href="/" class="logo">PUYO<span>DELIVERY</span></a>
+        <a href="/datos" class="btn-data">🔍 PERSISTENCIA LOCAL</a>
+    </nav>
     <div class="card">
-        <h1>🛵 Puyo Delivery - Sistema Integrado</h1>
-        <p style="text-align:center;">Persistencia: <b>SQLAlchemy (ORM) + Archivos (JSON, CSV, TXT)</b></p>
-        
-        <div style="text-align: center;">
-            <a href="/datos" class="nav-btn">🔍 Ver Persistencia en Archivos</a>
-        </div>
-
-        <div class="form-group">
-            <form action="/add" method="post">
-                <input name="id" placeholder="ID" type="number" required style="width: 60px;">
-                <input name="nombre" placeholder="Producto" required>
-                <input name="cant" placeholder="Stock" type="number" required style="width: 70px;">
-                <input name="precio" placeholder="Precio" type="number" step="0.01" required style="width: 80px;">
-                <input name="rest" placeholder="Restaurante" required>
-                <button type="submit">Guardar en Todo el Sistema</button>
-            </form>
-        </div>
-
+        <h2 style="margin-top:0;">Gestión de Inventario (ORM + Archivos)</h2>
+        <form class="form-grid" action="/add" method="post">
+            <input name="id" placeholder="ID" type="number" required>
+            <input name="nombre" placeholder="Producto" required>
+            <input name="cant" placeholder="Stock" type="number" required>
+            <input name="precio" placeholder="Precio" type="number" step="0.01" required>
+            <input name="rest" placeholder="Restaurante" required>
+            <button type="submit" class="btn-add">GUARDAR TODO</button>
+        </form>
         <table>
             <tr><th>ID</th><th>Nombre</th><th>Stock</th><th>Precio</th><th>Restaurante</th><th>Acción</th></tr>
     """
     for p in productos:
         html += f"""
             <tr>
-                <td>{p.get_id()}</td>
-                <td>{p.get_nombre()}</td>
-                <td>{p.cantidad} unidades</td>
-                <td>${p.precio:.2f}</td>
+                <td><span class="id-tag">#{p.get_id()}</span></td>
+                <td><strong>{p.get_nombre()}</strong></td>
+                <td>{p.cantidad} unds.</td>
+                <td><b>${p.precio:.2f}</b></td>
                 <td>{p.restaurante}</td>
-                <td><a href="/del/{p.id}" class="btn-del" onclick="return confirm('¿Eliminar?')">Eliminar</a></td>
+                <td><a href="/del/{p.id_prod}" style="color:#d32f2f; text-decoration:none; font-weight:bold;">Eliminar</a></td>
             </tr>
         """
     html += "</table></div>"
@@ -139,63 +130,64 @@ def home():
 @app.route('/add', methods=['POST'])
 def add():
     try:
-        # 1. Datos del formulario
         p_id = int(request.form['id'])
-        nombre = request.form['nombre']
-        cantidad = int(request.form['cant'])
-        precio = float(request.form['precio'])
-        restaurante = request.form['rest']
+        p_nom = request.form['nombre']
+        p_can = int(request.form['cant'])
+        p_pre = float(request.form['precio'])
+        p_res = request.form['rest']
 
-        # 2. Persistencia en DB con SQLAlchemy (Punto 2.3)
-        nuevo_p = Producto(id=p_id, _nombre=nombre, cantidad=cantidad, precio=precio, restaurante=restaurante)
-        db.session.add(nuevo_p)
+        # 1. Persistencia ORM
+        nuevo = Producto(id_prod=p_id, _nombre=p_nom, cantidad=p_can, precio=p_pre, restaurante=p_res)
+        db.session.add(nuevo)
         db.session.commit()
 
-        # 3. Persistencia en archivos (Punto 2.2)
-        dict_datos = {"id": p_id, "nombre": nombre, "cantidad": cantidad, "precio": precio, "restaurante": restaurante}
-        guardar_en_archivos(dict_datos)
-        
-    except Exception as e:
-        print(f"Error: {e}")
+        # 2. Persistencia en Archivos
+        p_dict = {"id": p_id, "nombre": p_nom, "cantidad": p_can, "precio": p_pre, "restaurante": p_res}
+        guardar_en_archivos(p_dict)
+    except Exception:
         db.session.rollback()
-        
     return redirect(url_for('home'))
 
-@app.route('/del/<int:id_p>')
-def delete(id_p):
-    prod = Producto.query.get(id_p)
-    if prod:
-        db.session.delete(prod)
+@app.route('/del/<int:id>')
+def delete(id):
+    p = Producto.query.get(id)
+    if p:
+        db.session.delete(p)
         db.session.commit()
     return redirect(url_for('home'))
 
-# RUTA NUEVA PARA SEMANA 12: Muestra la persistencia en archivos
+# RUTA PARA VISUALIZAR LOS ARCHIVOS (REQUISITO 2.2)
 @app.route('/datos')
-def datos():
-    data = leer_archivos_planos()
-    html = f"""
-    <body style="font-family: sans-serif; margin: 40px; background: #f0f2f5;">
-        <a href="/" style="text-decoration: none; color: #007bff; font-weight: bold;">← Volver al Sistema</a>
+def show_files():
+    # Lectura de archivos para visualización
+    data = {"txt": "Vacío", "json": [], "csv": []}
+    if os.path.exists(os.path.join(DATA_DIR, 'datos.txt')):
+        with open(os.path.join(DATA_DIR, 'datos.txt'), 'r') as f: data['txt'] = f.read()
+    if os.path.exists(os.path.join(DATA_DIR, 'datos.json')):
+        with open(os.path.join(DATA_DIR, 'datos.json'), 'r') as f:
+            try: data['json'] = json.load(f)
+            except: pass
+    if os.path.exists(os.path.join(DATA_DIR, 'datos.csv')):
+        with open(os.path.join(DATA_DIR, 'datos.csv'), 'r') as f:
+            data['csv'] = list(csv.DictReader(f))
+
+    return render_template_string("""
+    <body style="background:#121212; color:white; font-family:Inter; padding:50px;">
+        <a href="/" style="color:#FF5A00; text-decoration:none; font-weight:bold;">← VOLVER</a>
         <h1>Lectura de Persistencia Local (Semana 12)</h1>
-        
-        <div style="background: white; padding: 20px; margin-bottom: 20px; border-radius: 10px; border-left: 5px solid #ffc107;">
-            <h3>📄 Archivo TXT (Lectura plana)</h3>
-            <pre>{data['txt']}</pre>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+            <div style="background:#1e1e1e; padding:20px; border-radius:10px; border-left:5px solid orange;">
+                <h3>📄 TXT LOGS</h3><pre>{{ txt }}</pre>
+            </div>
+            <div style="background:#1e1e1e; padding:20px; border-radius:10px; border-left:5px solid green;">
+                <h3>📦 JSON DATA</h3><pre>{{ json }}</pre>
+            </div>
         </div>
-
-        <div style="background: white; padding: 20px; margin-bottom: 20px; border-radius: 10px; border-left: 5px solid #28a745;">
-            <h3>📦 Archivo JSON (Diccionario serializado)</h3>
-            <pre>{json.dumps(data['json'], indent=2)}</pre>
-        </div>
-
-        <div style="background: white; padding: 20px; margin-bottom: 20px; border-radius: 10px; border-left: 5px solid #17a2b8;">
-            <h3>📊 Archivo CSV (Registros estructurados)</h3>
-            <pre>{data['csv']}</pre>
+        <div style="background:#1e1e1e; padding:20px; border-radius:10px; border-left:5px solid blue; margin-top:20px;">
+            <h3>📊 CSV REPORT</h3><pre>{{ csv }}</pre>
         </div>
     </body>
-    """
-    return render_template_string(html)
+    """, txt=data['txt'], json=json.dumps(data['json'], indent=2), csv=data['csv'])
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)), debug=False)
